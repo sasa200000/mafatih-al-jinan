@@ -1,0 +1,6 @@
+{
+  "name": "مفاتیح الجنان",
+  "description": "اپلیکیشن جامع مفاتیح الجنان همراه با رقص نور چندشکلی معنوی و پشتیبانی",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
