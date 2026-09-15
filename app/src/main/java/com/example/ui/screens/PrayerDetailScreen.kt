@@ -604,6 +604,7 @@ fun AudioPlayerBar(
     errorMessage: String?,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = EmeraldDark.copy(alpha = 0.92f)),
@@ -672,6 +673,14 @@ fun AudioPlayerBar(
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.error
                 )
+            }
+            if (reciter.needsVoiceData) {
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(onClick = {
+                    (context as? android.app.Activity)?.let { reciter.installVoiceData(it) }
+                }) {
+                    Text(text = "نصب یک‌باره بسته صوتی عربی (بعد از آن کاملا آفلاین)", fontSize = 12.sp)
+                }
             }
         }
     }

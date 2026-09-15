@@ -1,11 +1,17 @@
 package com.example.utils
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
 
@@ -22,14 +28,20 @@ class PrayerReciter(context: Context) {
 
     private val tts: TextToSpeech
 
-    var isReady: Boolean = false
+    var isReady by mutableStateOf(false)
         private set
-    var isSpeaking: Boolean = false
+    var isSpeaking by mutableStateOf(false)
         private set
     /** Index (into the supplied verse list) of the verse currently being read, or -1. */
-    var currentIndex: Int = -1
+    var currentIndex by mutableStateOf(-1)
         private set
-    var errorMessage: String? = null
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+    /** True when the Arabic voice pack is missing — needs a one-time download. */
+    var needsVoiceData by mutableStateOf(false)
+        private set
+    /** True when a fully on-device (no-network) Arabic voice is active. */
+    var offlineReady by mutableStateOf(false)
         private set
 
     private var verses: List<String> = emptyList()
@@ -44,7 +56,27 @@ class PrayerReciter(context: Context) {
                     res = tts.setLanguage(Locale("ar", "SA"))
                 }
                 if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    errorMessage = "بسته صوتی عربی روی دستگاه نصب نیست؛ از تنظیمات زبان اندروید نصب شود"
+                    needsVoiceData = true
+                    errorMessage = "بسته صوتی عربی روی دستگاه نصب نیست؛ برای پخش کاملا آفلاین یک‌بار آن را نصب کنید"
+                } else {
+                    // Prefer a voice that works without network.
+                    try {
+                        val localAr = tts.voices?.filter {
+                            it.locale.language == "ar" && !it.isNetworkConnectionRequired
+                        }
+                        if (!localAr.isNullOrEmpty()) {
+                            tts.voice = localAr.first()
+                            offlineReady = true
+                            errorMessage = null
+                        } else {
+                            // Engine supports Arabic but only via network synthesis;
+                            // still usable, but flag it so the UI is honest.
+                            offlineReady = false
+                            errorMessage = "صدای آفلاین عربی یافت نشد؛ پخش ممکن است به اینترنت نیاز داشته باشد"
+                        }
+                    } catch (_: Exception) {
+                        offlineReady = false
+                    }
                 }
                 tts.setSpeechRate(0.85f)
                 tts.setPitch(1.0f)
@@ -71,13 +103,27 @@ class PrayerReciter(context: Context) {
         })
     }
 
+    /** Force on-device synthesis — never route speech through the network. */
+    private fun offlineParams(): Bundle = Bundle().apply {
+        putString(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS, "false")
+    }
+
     private fun speakCurrent() {
         if (pos in verses.indices) {
             currentIndex = verseIndices[pos]
-            tts.speak(verses[pos], TextToSpeech.QUEUE_FLUSH, null, "v_$pos")
+            tts.speak(verses[pos], TextToSpeech.QUEUE_FLUSH, offlineParams(), "v_$pos")
         } else {
             isSpeaking = false
             currentIndex = -1
+        }
+    }
+
+    /** One-time download of the Arabic voice pack (after this, playback is offline). */
+    fun installVoiceData(activity: Activity) {
+        try {
+            activity.startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+        } catch (_: Exception) {
+            errorMessage = "نصب خودکار ممکن نیست؛ از تنظیمات اندروید بسته صوتی عربی را نصب کنید"
         }
     }
 
