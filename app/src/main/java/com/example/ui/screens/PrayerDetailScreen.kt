@@ -51,6 +51,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -63,6 +64,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -78,6 +81,7 @@ import com.example.model.PrayerVerse
 import com.example.ui.components.LightVisualizerCanvas
 import com.example.ui.components.ScreenEdgeLighting
 import com.example.ui.components.SupportHeaderButton
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.utils.PrayerReciter
 import com.example.utils.VibrationHelper
 import com.example.utils.rememberPrayerReciter
@@ -115,6 +119,16 @@ fun PrayerDetailScreen(
     val verseCounters = remember { mutableStateMapOf<Int, Int>() }
 
     val reciter = rememberPrayerReciter()
+    // After the user installs the Arabic voice pack (settings/installer),
+    // re-check availability as soon as the screen comes back.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, reciter) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) reciter.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
     val verseAudioList = remember(prayer) {
         prayer.verses.map { it.id to it.arabic }
     }

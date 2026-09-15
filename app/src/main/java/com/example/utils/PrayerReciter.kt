@@ -51,33 +51,7 @@ class PrayerReciter(context: Context) {
     init {
         tts = TextToSpeech(context.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                var res = tts.setLanguage(Locale("ar"))
-                if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    res = tts.setLanguage(Locale("ar", "SA"))
-                }
-                if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    needsVoiceData = true
-                    errorMessage = "بسته صوتی عربی روی دستگاه نصب نیست؛ برای پخش کاملا آفلاین یک‌بار آن را نصب کنید"
-                } else {
-                    // Prefer a voice that works without network.
-                    try {
-                        val localAr = tts.voices?.filter {
-                            it.locale.language == "ar" && !it.isNetworkConnectionRequired
-                        }
-                        if (!localAr.isNullOrEmpty()) {
-                            tts.voice = localAr.first()
-                            offlineReady = true
-                            errorMessage = null
-                        } else {
-                            // Engine supports Arabic but only via network synthesis;
-                            // still usable, but flag it so the UI is honest.
-                            offlineReady = false
-                            errorMessage = "صدای آفلاین عربی یافت نشد؛ پخش ممکن است به اینترنت نیاز داشته باشد"
-                        }
-                    } catch (_: Exception) {
-                        offlineReady = false
-                    }
-                }
+                checkVoice()
                 tts.setSpeechRate(0.85f)
                 tts.setPitch(1.0f)
                 isReady = true
@@ -103,6 +77,48 @@ class PrayerReciter(context: Context) {
         })
     }
 
+    /** Evaluate Arabic voice availability. Called on init and on every screen resume. */
+    private fun checkVoice() {
+        var res = tts.setLanguage(Locale("ar"))
+        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+            res = tts.setLanguage(Locale("ar", "SA"))
+        }
+        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+            needsVoiceData = true
+            offlineReady = false
+            errorMessage = "بسته صوتی عربی روی دستگاه نصب نیست؛ برای پخش کاملا آفلاین یک‌بار آن را نصب کنید"
+        } else {
+            // Prefer a voice that works without network.
+            try {
+                val localAr = tts.voices?.filter {
+                    it.locale.language == "ar" && !it.isNetworkConnectionRequired
+                }
+                if (!localAr.isNullOrEmpty()) {
+                    tts.voice = localAr.first()
+                    offlineReady = true
+                    needsVoiceData = false
+                    errorMessage = null
+                } else {
+                    // Engine supports Arabic but only via network synthesis;
+                    // still usable, but flag it so the UI is honest.
+                    offlineReady = false
+                    needsVoiceData = false
+                    errorMessage = "صدای آفلاین عربی یافت نشد؛ پخش ممکن است به اینترنت نیاز داشته باشد"
+                }
+            } catch (_: Exception) {
+                offlineReady = false
+                needsVoiceData = false
+            }
+        }
+    }
+
+    /** Re-check voice availability (call when returning from the installer/settings). */
+    fun refresh() {
+        if (isReady) {
+            try { checkVoice() } catch (_: Exception) { /* engine busy, keep old state */ }
+        }
+    }
+
     /** Force on-device synthesis — never route speech through the network. */
     private fun offlineParams(): Bundle = Bundle().apply {
         putString(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS, "false")
@@ -111,7 +127,11 @@ class PrayerReciter(context: Context) {
     private fun speakCurrent() {
         if (pos in verses.indices) {
             currentIndex = verseIndices[pos]
-            tts.speak(verses[pos], TextToSpeech.QUEUE_FLUSH, offlineParams(), "v_$pos")
+            val r = tts.speak(verses[pos], TextToSpeech.QUEUE_FLUSH, offlineParams(), "v_$pos")
+            if (r == TextToSpeech.ERROR) {
+                errorMessage = "پخش شروع نشد؛ اگر بسته صوتی عربی نصب نیست، دکمه نصب را بزنید"
+                isSpeaking = false
+            }
         } else {
             isSpeaking = false
             currentIndex = -1
@@ -122,15 +142,23 @@ class PrayerReciter(context: Context) {
     fun installVoiceData(activity: Activity) {
         try {
             activity.startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+            return
+        } catch (_: Exception) { /* fall through to settings */ }
+        try {
+            activity.startActivity(Intent("com.android.settings.TTS_SETTINGS"))
         } catch (_: Exception) {
-            errorMessage = "نصب خودکار ممکن نیست؛ از تنظیمات اندروید بسته صوتی عربی را نصب کنید"
+            errorMessage = "نصب خودکار ممکن نیست؛ در تنظیمات اندروید: زبان‌ها > تبدیل متن به گفتار > نصب بسته صوتی عربی"
         }
     }
 
     /** Start reciting from the beginning (or from the given verse id). */
     fun play(versesWithIndex: List<Pair<Int, String>>, startIndex: Int = 0) {
         if (!isReady) {
-            if (errorMessage == null) errorMessage = "موتور تبدیل متن به گفتار آماده نیست"
+            if (errorMessage == null) errorMessage = "موتور تبدیل متن به گفتار آماده نیست؛ لحظه‌ای صبر کنید و دوباره بزنید"
+            return
+        }
+        if (needsVoiceData) {
+            errorMessage = "اول بسته صوتی عربی را با دکمه «نصب یک‌باره» نصب کنید، بعد پخش را بزنید"
             return
         }
         this.verses = versesWithIndex.map { it.second }

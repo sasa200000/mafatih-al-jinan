@@ -22,6 +22,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -42,6 +43,9 @@ import com.example.model.PrayerItem
 import com.example.ui.components.ScreenEdgeLighting
 import com.example.ui.components.SupportBottomSheet
 import com.example.ui.components.TasbihView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.utils.rememberPrayerReciter
 import com.example.ui.theme.EmeraldDark
 import com.example.ui.theme.EmeraldPrimary
@@ -71,6 +75,14 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
     // Welcome recitation: play Salawat of Hazrat Fatima al-Zahra once on app entry.
     val welcomeReciter = rememberPrayerReciter()
+    val mainLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(mainLifecycleOwner, welcomeReciter) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) welcomeReciter.refresh()
+        }
+        mainLifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { mainLifecycleOwner.lifecycle.removeObserver(obs) }
+    }
     var welcomePlayed by remember { mutableStateOf(false) }
     LaunchedEffect(welcomeReciter.isReady) {
         if (welcomeReciter.isReady && !welcomePlayed) {
