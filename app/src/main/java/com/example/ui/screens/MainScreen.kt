@@ -22,6 +22,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,7 @@ import com.example.model.PrayerItem
 import com.example.ui.components.ScreenEdgeLighting
 import com.example.ui.components.SupportBottomSheet
 import com.example.ui.components.TasbihView
+import com.example.utils.rememberPrayerReciter
 import com.example.ui.theme.EmeraldDark
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.GoldAccent
@@ -66,6 +68,17 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var currentTab by remember { mutableStateOf(AppTab.MAFATIH) }
     var selectedPrayer by remember { mutableStateOf<PrayerItem?>(null) }
     var showSupportSheet by remember { mutableStateOf(false) }
+
+    // Welcome recitation: play Salawat of Hazrat Fatima al-Zahra once on app entry.
+    val welcomeReciter = rememberPrayerReciter()
+    var welcomePlayed by remember { mutableStateOf(false) }
+    LaunchedEffect(welcomeReciter.isReady) {
+        if (welcomeReciter.isReady && !welcomePlayed) {
+            welcomePlayed = true
+            val salawat = MafatihDataSource.prayers.firstOrNull { it.id == "salawat_fatima" }
+            salawat?.let { welcomeReciter.play(it.verses.map { v -> v.id to v.arabic }) }
+        }
+    }
     var borderLightSettings by remember {
         mutableStateOf(BorderLightSettings(isEnabled = true, isGlobalEnabled = false))
     }
